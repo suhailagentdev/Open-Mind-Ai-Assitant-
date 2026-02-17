@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.svg" alt="OpenMind Logo" width="80" height="80" />
+<img src="https://github.com/suhailagentdev/Open-Mind-Ai-Assitant-/blob/main/Open%20Mind%20Ai%20Assistant.png?raw=true" alt="OpenMind Logo" width="80" height="80" />
 
 # OpenMind
 
