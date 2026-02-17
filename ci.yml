@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Lint & Validate
+  # ──────────────────────────────────────────────
+  lint:
+    name: Lint & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dev dependencies
+        run: npm ci --only=dev
+
+      - name: Lint JavaScript
+        run: npx eslint src/ --ext .js --max-warnings 0
+
+      - name: Validate HTML
+        run: npx html-validate index.html
+
+      - name: Check for TODO/FIXME in source
+        run: |
+          if grep -r "TODO\|FIXME\|HACK\|XXX" src/ --include="*.js" -l; then
+            echo "::warning::Found TODO/FIXME comments in source files"
+          fi
+
+  # ──────────────────────────────────────────────
+  # Unit Tests
+  # ──────────────────────────────────────────────
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test -- --coverage
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+  # ──────────────────────────────────────────────
+  # Security Audit
+  # ──────────────────────────────────────────────
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  # ──────────────────────────────────────────────
+  # E2E Tests (Playwright)
+  # ──────────────────────────────────────────────
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Start local server
+        run: npx serve . -p 3000 &
+
+      - name: Wait for server
+        run: npx wait-on http://localhost:3000
+
+      - name: Run Playwright tests
+        run: npx playwright test tests/e2e/
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  # ──────────────────────────────────────────────
+  # Build & Size Check
+  # ──────────────────────────────────────────────
+  build:
+    name: Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check file sizes
+        run: |
+          MAX_SIZE=500000  # 500KB limit for index.html
+          SIZE=$(wc -c < index.html)
+          echo "index.html size: ${SIZE} bytes"
+          if [ $SIZE -gt $MAX_SIZE ]; then
+            echo "::error::index.html exceeds size limit (${SIZE} > ${MAX_SIZE} bytes)"
+            exit 1
+          fi
+
+      - name: Validate no broken links in docs
+        run: |
+          npm install -g markdown-link-check
+          find docs/ -name "*.md" -exec markdown-link-check {} \;

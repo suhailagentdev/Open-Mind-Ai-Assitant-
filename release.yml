@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          NOTES=$(awk "/## \[$VERSION\]/,/## \[/" CHANGELOG.md | head -n -1 | tail -n +2)
+          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create release archive
+        run: |
+          zip -r openmind-v${{ steps.version.outputs.VERSION }}.zip . \
+            --exclude "*.git*" \
+            --exclude "node_modules/*" \
+            --exclude "tests/*" \
+            --exclude ".github/*"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: OpenMind v${{ steps.version.outputs.VERSION }}
+          body: ${{ steps.changelog.outputs.NOTES }}
+          files: |
+            openmind-v${{ steps.version.outputs.VERSION }}.zip
+            index.html
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
+
+      - name: Build and push Docker image
+        run: |
+          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker build -t ghcr.io/openmind-ai/openmind:${{ steps.version.outputs.VERSION }} .
+          docker tag ghcr.io/openmind-ai/openmind:${{ steps.version.outputs.VERSION }} ghcr.io/openmind-ai/openmind:latest
+          docker push ghcr.io/openmind-ai/openmind:${{ steps.version.outputs.VERSION }}
+          docker push ghcr.io/openmind-ai/openmind:latest
