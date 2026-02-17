@@ -21,7 +21,7 @@ Your API key stays in your browser. Your data stays yours. Forever.
 
 ---
 
-![OpenMind Screenshot](assets/screenshot.png)
+![OpenMind Screenshot](https://github.com/suhailagentdev/Open-Mind-Ai-Assitant-/blob/main/Screenshot%20(2).png?raw=true)
 
 </div>
 
